@@ -1,0 +1,227 @@
+<?php
+/**
+ * Copyright (c) 2024 Gelmar (Pty) Ltd
+ *
+ * Author: Rorke Melville
+ *
+ * Released under the GNU General Public License
+ */
+?>
+
+<style>
+    /* General Styles */
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        background-color: #f9f9f9;
+    }
+
+    .card-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px; 
+        justify-content: center;
+    }
+
+    .quote-card {
+        background-color: #ffffff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 15px;
+        width: calc(50% - 10px); 
+        transition: all 0.3s ease;
+        display: flex; /* Flexbox for layout */
+    }
+
+    /* Hover Effect */
+    .quote-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0px 6px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Active/Inactive States */
+    .quote-card.active {
+        border-left: 5px solid #0099a8;
+    }
+
+    .quote-card.inactive {
+        opacity: 0.9;
+    }
+    .quote-card.inactive:hover {
+        opacity: 1;
+    }
+
+    /* Content Area (Left Side) */
+    .quote-card-content {
+        flex: 1; 
+        padding-right: 15px; 
+    }
+
+    .quote-card.active .quote-card-content h3,
+    .quote-card.active .quote-card-content p {
+        color: #000; 
+    }
+
+    .quote-card.inactive .quote-card-content h3,
+    .quote-card.inactive .quote-card-content p {
+        color: #666; 
+    }
+
+    /* Typography */
+    .quote-card-content h3 {
+        margin: 0 0 10px;
+        font-size: 18px;
+    }
+
+    .quote-card-content p {
+        margin: 5px 0;
+        font-size: 14px;
+    }
+
+    /* Status Colors */
+    .quote-card .status {
+        color: green;
+    }
+
+    .quote-card .status.inactive {
+        color: red;
+    }
+
+    /* Image Container (Right Side) */
+    .quote-card-images {
+        display: grid;
+        grid-template-columns: repeat(2, 70px); 
+        gap: 10px; 
+        align-self: center; 
+    }
+
+    .quote-card-images img {
+        width: 70px;
+        height: 70px;
+        object-fit: cover;
+        border-radius: 4px;
+        box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    /*Placeholder Imgs*/
+    .quote-card-images > div {
+        width: 70px; 
+        height: 70px; 
+        background-color: #e0e0e0;
+        border-radius: 4px;
+        box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Button Styling */
+    .quote-card .btn-container {
+        margin-top: 10px; 
+    }
+
+    .quote-card .btnView {
+        display: inline-block;
+        padding: 10px 30px; 
+        background-color: #0099a8;
+        color: white !important; 
+        text-decoration: none;
+        border: 1px solid; 
+        border-radius: 4px;
+        transition: background-color, transform 0.5s ease; 
+        font-weight: bold; 
+    }
+
+    /* Button Hover Effect */
+    .quote-card .btnView:hover {
+        background-color: white; 
+        color: #0099a8 !important; 
+        border: 1px solid #0099a8; 
+        transform: translateX(10px);
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        .quote-card {
+            width: 100%; 
+        }
+        .quote-card-images {
+            grid-template-columns: repeat(2, 50px); 
+        }
+        .quote-card-images img,
+        .quote-card-images > div {
+            width: 50px; 
+            height: 50px; 
+        }
+        .btnBack{
+            margin-top:15px;
+        }
+    }
+
+    /* No Quotes Found Message */
+    .no-quotes-message {
+        text-align: center;
+        margin: 50px auto;
+        padding: 20px;
+        background-color: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        max-width: 600px;
+        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .no-quotes-message h2 {
+        font-size: 24px;
+        color: #333;
+        margin-bottom: 10px;
+    }
+
+    .no-quotes-message p {
+        font-size: 16px;
+        color: #666;
+    }
+
+    .btnBack:hover{
+        transform: translateX(-10px)
+    }
+</style>
+
+<?php if ($quotes = $block->getData('quotes')): ?>
+    <div class="card-container">
+        <?php foreach (array_reverse($quotes) as $quote): ?>
+            <?php if ($quote['total_price'] > 0): ?>
+                <div class="quote-card <?= $quote['is_active'] ? 'active' : 'inactive' ?>">
+                    <!-- Card Content (Left Side) -->
+                    <div class="quote-card-content">
+                        <h3>Quote #<?= $quote['quote_id'] ?></h3>
+                        <p><strong>Date Created:</strong> <?= $quote['quote_date'] ?></p>
+                        <p><strong>Total Price:</strong> ZAR <?= number_format($quote['total_price'], 2) ?></p>
+                        <p><strong>Status:</strong> <span class="status <?= !$quote['is_active'] ? 'inactive' : '' ?>"><?= $quote['is_active'] ? 'Active' : 'Inactive' ?></span></p>
+                        <!-- Button Container -->
+                        <div class="btn-container">
+                            <a href="<?= $quote['is_active'] 
+                                ? $block->getUrl('checkout/cart/') 
+                                : $block->getUrl('quote/quote/view', ['quote_id' => $quote['quote_id']]) ?>" 
+                               class="btnView">VIEW</a>
+                        </div>
+                    </div>
+                    <!-- Card Images (Right Side) -->
+                    <div class="quote-card-images">
+                        <?php foreach (array_slice($quote['products'] ?? [], 0, 4) as $index => $product): ?>
+                            <img src="<?= $block->escapeUrl($product['product_image'] ?? '') ?>" 
+                                 alt="<?= $block->escapeHtmlAttr($product['product_name'] ?? '') ?>" />
+                        <?php endforeach; ?>
+                        <?php for ($i = count($quote['products'] ?? []); $i < 4; $i++): ?>
+                            <div></div>
+                        <?php endfor; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+        <?php endforeach; ?>
+    </div>
+<?php else: ?>
+    <!-- No Quotes Found Message -->
+    <div class="no-quotes-message">
+        <h2>No Quotes Found</h2>
+        <p>It looks like you don't have any quotes yet. You can create a new quote by adding products to your cart.</p>
+    </div>
+<?php endif; ?>
+
+<button class="action button secondary btnBack" onclick="window.location.href='https://dev.gelmar.co.za/customer/account/'">Back</button>

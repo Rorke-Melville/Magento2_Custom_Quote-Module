@@ -1,0 +1,430 @@
+<?php
+/*
+* Copyright (c) 2024 Gelmar (Pty) Ltd
+*
+* Author: Rorke Melville
+*
+* Released under the GNU General Public License
+*/
+$quote = $block->getQuote(); // Retrieve the quote passed from the controller
+$quoteItems = $quote->getAllItems(); // Retrieve all products in the quote
+$totalWeight = 0; // Initialize total weight
+
+if ($quoteItems && count($quoteItems) > 0) {
+    foreach ($quoteItems as $item) {
+        $itemWeight = $item->getWeight(); // Ensure weight is available in your product data
+        $totalWeight += $itemWeight * $item->getQty(); // Accumulate total weight
+    }
+}
+?>
+<script type="text/javascript">
+    const totalWeight = <?= json_encode($totalWeight) ?>; // Pass PHP weight to JavaScript
+</script>
+<style>
+#quote-form {
+    width: 65%;
+    margin: 0 auto;
+    height: auto;
+    padding: 20px;
+    border: 1px solid #0099a8;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+}
+@media screen and (max-width: 768px) {
+    #quote-form {
+        width: 100%; 
+        margin-bottom: 15px;
+    }
+    #generate-quote-button{
+        width:65% !important;
+    }
+}
+
+#h2Quote {
+    text-align: center;
+    font-weight: bold;
+}
+
+fieldset {
+    border: 1px solid #0099a8;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    padding: 15px;
+    margin: 10px 5px;
+}
+
+legend {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+input, select, textarea {
+    border-radius: 10px !important;
+    padding: 8px;
+    margin-bottom: 10px;
+    box-sizing: border-box;
+}
+
+input:hover, select:hover, text:hover {
+    border-color: #0099a8 !important;
+    outline: none;
+}
+input:focus, select:focus, text:focus {
+    background-color: white !important; 
+    outline: none;         
+}
+
+#generate-quote-button {
+    display: block;
+    margin: 20px auto; 
+    padding: 10px 20px;
+    cursor: pointer;
+    text-align: center;
+    border-radius:25px;
+    width: 40%;
+}
+
+input[type="radio"] {
+    all: unset; 
+    appearance: radio; 
+    -webkit-appearance: radio; 
+    margin-right: 8px; 
+}
+input[type="radio"]:checked {
+    accent-color: #0099a8; 
+}
+
+p.delivery-message {
+    color: red;
+    font-weight: bold;
+    margin-top: 10px;
+}
+</style>
+
+<form id="quote-form" action="<?= $block->getUrl('quote/cart/generatequote') ?>" method="POST" target="_blank">
+    <input type="hidden" name="form_key" value="<?= $block->getFormKey() ?>">
+    <input type="hidden" name="quote_id" value="<?= $quote->getEntityId();?>">
+    <input type="hidden" name="delivery_cost" id="delivery_cost" value="">
+    <h2 id="h2Quote">Quote Information</h2>
+    <fieldset>
+        <legend>Customer Details</legend>
+        <div>
+            <label for="firstName">First Name:</label>
+            <input type="text" id="firstName" name="firstname" required value="<?= $quote ? $quote->getCustomerFirstname() : '' ?>" placeholder="Please enter your first name">
+        </div>
+        <div>
+            <label for="lastName">Last Name:</label>
+            <input type="text" id="lastName" name="lastname" required value="<?= $quote ? $quote->getCustomerLastname() : '' ?>" placeholder="Please enter your surname">
+        </div>
+        <div>
+            <label for="streetAddress">Street Address:</label>
+            <input type="text" id="streetAddress" name="street" required value="<?= $quote ? implode(', ', $quote->getBillingAddress()->getStreet()) : '' ?>" placeholder="Please enter your address">
+        </div>
+        <div>
+            <label for="city">City:</label>
+            <input type="text" id="city" name="city" required value="<?= $quote ? $quote->getBillingAddress()->getCity() : '' ?>" placeholder="Please enter your city">
+        </div>
+        <div>
+            <label for="region">Province:</label>
+            <select id="region" name="region" required>
+                <option value="" disabled>Select a province</option>
+                <?php
+                $regions = [
+                    704 => 'Eastern Cape',
+                    702 => 'Free State',
+                    703 => 'Gauteng',
+                    705 => 'KwaZulu-Natal',
+                    706 => 'Limpopo',
+                    707 => 'Mpumalanga',
+                    709 => 'North-West',
+                    708 => 'Northern Cape',
+                    710 => 'Western Cape',
+                ];
+                foreach ($regions as $id => $name) {
+                    $selected = $quote && $quote->getBillingAddress()->getRegionId() == $id ? 'selected' : '';
+                    echo "<option value=\"$id\" $selected>$name</option>";
+                }
+                ?>
+            </select>
+        </div>
+        <div>
+            <label for="country">Country:</label>
+            <select id="country" name="country" required>
+                <option value="ZA" <?= $quote && $quote->getBillingAddress()->getCountryId() == 'ZA' ? 'selected' : '' ?>>South Africa</option>
+            </select>
+        </div>
+        <div>
+            <label for="telephone">Phone Number:</label>
+            <input type="tel" id="telephone" name="telephone" required value="<?= $quote ? $quote->getBillingAddress()->getTelephone() : '' ?>" placeholder="0315732490">
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Delivery/Collection</legend>
+        <div>
+            <input type="radio" id="clickCollect" name="shippingMethod" value="Click n Collect" checked>
+            <label for="clickCollect">Click n Collect</label>
+        </div>
+        <div id="store-selection">
+            <label for="store">Select Store:</label>
+            <select id="store" name="store">
+                <option value="" disabled selected>Select a store</option>
+                <optgroup label="Eastern Cape">
+                                    <option value="23, Collect from Gelmar East London"> East London - Unit 41, Balfour Park, Balfour Rd, Vincent, East London, 5201</option>
+                                    <option value="26, Collect from Gelmar Gqeberha (Port Elizabeth)"> Gqeberha - Shop 17, Quarter Shopping Centre, Cnr 17th Ave &amp; Martin Rd, Gqeberha (Port Elizabeth), 6055</option>
+                                    <option value="60, Collect from Gelmar Kariega (Uitenhage)"> Kariega - The Penford Shopping centre, 22-24 Graaff Reinet Road, Mosel, Kariega (Uitenhage), 6229</option>
+                                </optgroup>
+                                <optgroup label="Free State">
+                                    <option value="71, Collect from Gelmar Bethlehem"> Bethlehem - 29B Lindley St, Bethlehem, 9701</option>
+                                    <option value="21, Collect from Gelmar Bloemfontein"> Bloemfontein - 4 Monument Road, Oranjesig, Bloemfontein, 9301</option>
+                                    <option value="33, Collect from Gelmar Welkom"> Welkom - Shop 5, 355 Long Rd, Welkom, 9459</option>
+                                </optgroup>
+                                <optgroup label="Gauteng">
+                                    <option value="39, Collect from Gelmar Boksburg"> Boksburg - Pepper Square Mall, Cnr North Rand Rd &amp; Cynthia St, Boksburg, 1459</option>
+                                    <option value="32, Collect from Gelmar Centurion"> Centurion - Shop No 4, Lifestyle Walk Centre, Clarinet St, Centurion, 0157</option>
+                                    <option value="38, Collect from Gelmar Fourways"> Fourways - Shop 11, Fourways Value Mart, Forest Rd, Fourways, 2055</option>
+                                    <option value="48, Collect from Gelmar Greenstone"> Greenstone - Shop 1a, Greenstone Motor City, Cnr Stoneridge Dr &amp; Greenstone Pl Greenstone, Modderfontein, 1616</option>
+                                    <option value="24, Collect from Gelmar Little Falls"> Little Falls - Lifestyle Crossing, Store B8, Hendrik Potgieter Rd &amp; Nic Diederichs Blvd, Wilgeheuwel, Roodepoort, 1724</option>
+                                    <option value="30, Collect from Gelmar Meadowdale"> Meadowdale - Shop 503, Meadowdale Value City, Hyperama Link Rd, Meadowdale Edenvale, 1609</option>
+                                    <option value="40, Collect from Gelmar Montana"> Montana - Unit D1 &amp; D2, Cnr Ibis Cres &amp; Sefako Makgatho Dr, Pretoria, 0182</option>
+                                    <option value="53, Collect from Gelmar Nasrec"> Nasrec - Shop No. G07, Nasrec Corner, Cnr Rifle Range &amp; Nasrec Rd, Johannesburg South, 2013</option>
+                                    <option value="43, Collect from Gelmar Newmarket"> Newmarket - Newmarket Park, Ascot Rd, Newmarket, Alberton, 1450</option>
+                                    <option value="29, Collect from Gelmar Pretoria"> Pretoria - Cnr Dykor &amp; Moreleta St, Silverton, Pretoria, 0184</option>
+                                    <option value="46, Collect from Gelmar Randburg"> Randburg - 15 Hylauma St, Ferndale, Randburg, 2194</option>
+                                    <option value="66, Collect from Gelmar Princess Crossing"> Princess Crossing - Princess Crossing Shopping Centre, Shop77/78, 54 Ontdekkers Road, Helderkruin, Roodepoort, 1862</option>
+                                    <option value="41, Collect from Gelmar Sandton"> Sandton - 201 Dartfield Rd, Eastgate Exts, Kramerville, Johannesburg, 2090</option>
+                                    <option value="54, Collect from Gelmar Silver Lakes"> Silver lakes - Shop No. 1, Lifestyle Centre, Cnr Solomon Mahlangu Dr &amp; Bendeman Blvd, Pretoria, 0184</option>
+                                    <option value="65, Collect from Gelmar Vanderbijlpark"> Vanderbijlpark - Unit 21, Prime Business Park, 6 Rabie Street, Vanderbijlpark, 1911</option>
+                                    <option value="59, Collect from Gelmar Wonderpark"> Wonderpark - Shop No. 126B, Wonderpark Shopping Centre, 344 Brits road, Karen Park, Pretoria, 0118</option>
+                                    <option value="37, Collect from Gelmar Xavier"> Xavier - Shop 1, Building 3, Cnr Vleiroos Rd &amp; Xavier St, Winchester Hills, 2091</option>
+                                </optgroup>
+                                <optgroup label="Kwazulu-Natal">   
+                                    <option value="57, Collect from Gelmar Arbour Crossing"> Arbour Crossing - Shop 47, Arbour Crossing Retail Centre, Cnr Oppenheimer &amp; Arbour Rd, Umbogintwini, Amanzimtoti, 4120</option>
+                                    <option value="62, Collect from Gelmar Ballito"> Ballito - 2 Moffat Dr, Ballito Business Park, Ballito, Dolphin Coast, 4399</option>
+                                    <option value="22, Collect from Gelmar Chatsworth"> Chatsworth - Unit 12, Kays Centre, 625 Sunset Avenue, Chatsworth, Durban, 4092</option>
+                                    <option value="51, Collect from Gelmar Hillcrest"> Hillcrest - Shop No. 4, Phase 2, Richdens Village Centre, Old Main Rd, Hillcrest, 3610</option>
+                                    <option value="25, Collect from Gelmar Margate"> Margate - Shop 4, 229 Marine Dr, Manaba Beach, Margate, 4276</option>
+                                    <option value="31, Collect from Gelmar Mount Edgecombe"> Mount Edgecombe - Shop No 31, Mt Edgecombe Plaza, 100 Hillhead Dr, Mt Edgecombe, 4302</option>
+                                    <option value="45, Collect from Gelmar Newcastle"> Newcastle - Shop 34A, Amajuba Mall, Cnr Victoria Rd &amp; Allen St, Newcastle, 2940</option>
+                                    <option value="27, Collect from Gelmar Pietermaritzburg"> Pietermaritzburg - Wembley Shopping Centre, Cnr Boom St &amp; Commercial St Pietermaritzburg, 3201</option>
+                                    <option value="28, Collect from Gelmar Pinetown"> Pinetown - 152 Josiah Gumede Rd, Pinetown, Durban, 3620</option>
+                                    <option value="55, Collect from Gelmar Richards Bay"> Richards Bay - Shop 1, Town Square Mall, Bullion Blvd, Richards Bay, 3900</option>
+                                    <option value="20, Collect from Gelmar Springfield"> Springfield - 2 Kosi Place, Springfield Park, Durban, 4001</option>
+                                    <option value="52, Collect from Gelmar Umhlanga"> Umhlanga - Unit 10, Outlet Park, 59 Meridian Dr, Umhlanga New Town Centre, 4001</option>
+                                </optgroup>
+                                <optgroup label="Limpopo">
+                                    <option value="69, Collect from Gelmar Polokwane"> Polokwane - 27 19th St, Polokwane Ext 3, Polokwane, 0713</option>
+                                    <option value="70, Collect from Gelmar Tzaneen"> Tzaneen - Cnr Claude Wheatley Str &amp; Sapekoe Dr, Arbour Park, Tzaneen, 0850</option>
+                                </optgroup>
+                                <optgroup label="Mpumalanga">
+                                    <option value="44, Collect from Gelmar Nelspruit"> Nelspruit - 8 Amanzi St, Nelspruit, 1201</option>
+                                </optgroup>
+                                <optgroup label="North West">
+                                    <option value="68, Collect from Gelmar Rustenburg"> Rustenburg - Shop 29, Platinum Square Shopping Centre, 74 Gareth Roberts Ave, Cashan, Rustenburg, 0299</option>
+                                </optgroup>
+                                <optgroup label="Northern Cape">
+                                    <option value="49, Collect from Gelmar Kimberley"> Kimberley - Unit D1, Fabricia Trading Post, 12 fabricia Rd, Kimberley, 8301</option>
+                                </optgroup>
+                                <optgroup label="Western Cape">
+                                    <option value="67, Collect from Gelmar Brackenfell"> Brackenfell - Shop 3, Brackenfell Centre, 524 Frans Conradie Drive, Brackenfell, 7560</option>
+                                    <option value="36, Collect from Gelmar George"> George - 94 York St, Hoepfner Centre, George, 6529</option>
+                                    <option value="50, Collect from Gelmar Montague Gardens"> Montague Gardens - 1 Topaz Blvd, Montague Park, Montague Gardens, Cape Town, 7441</option>
+                                    <option value="47, Collect from Gelmar N1 City"> N1 City - Shop 78, N1 Value Centre, Solly Schmeidt St, Goodwood, Cape Town, 7460</option>
+                                    <option value="64, Collect from Gelmar Ottery"> Ottery - Shop 97, New Ottery Road, Ottery Centre, Ottery, 7800</option>
+                                    <option value="63, Collect from Gelmar Paarl"> Paarl - Shop 1, Cnr Castle Street &amp; Berg River Blvd, Lucon Centre, Paarl, 7646</option>
+                                    <option value="58, Collect from Gelmar Somerset West"> Somerset West - Shop 28, Somerset Value Mart, Centenary Dr, Somerset West, 7110</option>
+                                    <option value="61, Collect from Gelmar Sunningdale"> Sunningdale - Shop 3, Sunningdale Lifestyle Centre, Cnr Sandown Rd and Sunningdale Dr, Parklands, Cape Town, 7441</option>
+                                    <option value="42, Collect from Gelmar Tokai"> Tokai - 333 Main Road Unit 1B, Block 2, South Palms, Tokai, Cape Town, 7966</option>
+                                    <option value="56, Collect from Gelmar Willowbridge"> Willowbridge - Shop No. 14, Willowbridge Village Shopping Centre, 39 Carl Cronje Dr, Tygervalley, Cape Town, 7530</option>            
+                                </optgroup>
+            </select>
+        </div>
+        <div>
+            <input type="radio" id="delivery" name="shippingMethod" value="Delivery">
+            <label for="delivery">Delivery</label>
+        </div>
+        <p class="delivery-message" id="delivery-message"></p>
+    </fieldset>
+
+    <fieldset>
+        <legend>Products</legend>
+        <ul>
+            <?php
+            $totalPrice = 0;
+
+            foreach ($quoteItems as $item) {
+                $itemPrice = $item->getPrice();
+                $itemTotal = $item->getQty() * $itemPrice;
+                $totalPrice += $itemTotal;
+                echo "<li>{$item->getQty()} x {$item->getName()} (SKU: {$item->getSku()}) - ZAR " . number_format($itemTotal, 2) . "</li>";
+            }
+            ?>
+        </ul>
+        <p><strong>Total Price: ZAR <?= number_format($totalPrice, 2) ?></strong></p>
+    </fieldset>
+
+    <button type="submit" class="action primary" id="generate-quote-button">Generate Quote</button>
+    
+</form>
+
+<a href="https://dev.gelmar.co.za/checkout/cart/">
+    <button class="action secondary">Back to cart</button>
+</a>
+<a href="https://dev.gelmar.co.za/checkout/" style="float:right;">
+    <button class="action secondary">proceed to checkout</button>
+</a>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBAu4ClNKoJ7qpXRcuyU4zzU0IWQ6TPvUo&libraries=places"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // Original Script: Delivery Cost and Form Handling
+    const form = document.getElementById("quote-form");
+    const deliveryRadio = document.getElementById("delivery");
+    const clickCollectRadio = document.getElementById("clickCollect");
+    const storeSelect = document.getElementById("store");
+    const totalPriceElement = document.querySelector("p strong");
+    const deliveryMessage = document.getElementById("delivery-message");
+    let deliveryCost = 0;
+
+    const totalWeight = <?= json_encode($totalWeight) ?>;
+    const totalPrice = <?= json_encode($totalPrice) ?>;
+
+    function calculateDeliveryCost() {
+        if (totalWeight <= 5) return 89;
+        if (totalWeight <= 10) return 199;
+        if (totalWeight <= 15) return 299;
+        if (totalWeight <= 20) return 399;
+        if (totalWeight <= 25) return 499;
+        if (totalWeight <= 30) return 599;
+        if (totalWeight <= 35) return 699;
+        if (totalWeight <= 40) return 799;
+        return 899;
+    }
+
+    deliveryRadio.addEventListener("click", function () {
+        if (totalPrice < 300) {
+            deliveryMessage.textContent = "Delivery is only available for orders over 300 ZAR.";
+            deliveryRadio.checked = false;
+            return;
+        }
+        deliveryCost = calculateDeliveryCost();
+        document.getElementById('delivery_cost').value = deliveryCost;
+        totalPriceElement.textContent = `Total Price: ZAR ${(totalPrice + deliveryCost).toFixed(2)}`;
+        deliveryMessage.textContent = `Delivery Cost: ZAR ${deliveryCost}`;
+    });
+
+    clickCollectRadio.addEventListener("click", function () {
+        deliveryMessage.textContent = "";
+        totalPriceElement.textContent = `Total Price: ZAR ${totalPrice.toFixed(2)}`;
+    });
+
+    form.addEventListener("submit", function (event) {
+        if (clickCollectRadio.checked && !storeSelect.value) {
+            // Set a custom validation message
+            storeSelect.setCustomValidity("Please select a store for Click n Collect.");
+            storeSelect.reportValidity(); // Display the validation message
+            event.preventDefault(); // Prevent form submission
+        } else {
+            // Clear the custom validation message if a valid store is selected
+            storeSelect.setCustomValidity("");
+        }
+    });
+
+    storeSelect.addEventListener("change", function () {
+        // Clear custom validity when the user selects a store
+        storeSelect.setCustomValidity("");
+    });
+
+    // Customer Details Validation
+    const firstNameInput = document.getElementById("firstName");
+    const lastNameInput = document.getElementById("lastName");
+    const cityInput = document.getElementById("city");
+    const phoneInput = document.getElementById("telephone");
+    const provinceSelect = document.getElementById("region");
+
+    const isOnlyLetters = (value) => /^[a-zA-Z\s]+$/.test(value); // Regex to allow only letters and spaces
+    const isValidPhoneNumber = (value) => /^0\d{9}$/.test(value); // Regex to check 10 digits, starts with 0
+
+    const fieldsToValidate = [
+        { field: firstNameInput, validator: isOnlyLetters, errorMessage: "First name must contain only letters." },
+        { field: lastNameInput, validator: isOnlyLetters, errorMessage: "Last name must contain only letters." },
+        { field: cityInput, validator: isOnlyLetters, errorMessage: "City must contain only letters." },
+        { field: phoneInput, validator: isValidPhoneNumber, errorMessage: "Phone number must be 10 digits, start with a 0, and contain only numbers." }
+    ];
+
+    function validateField(field, validator, errorMessage, showError) {
+        if (!validator(field.value)) {
+            if (showError) {
+                field.setCustomValidity(errorMessage);
+                field.reportValidity();
+            }
+            return false;
+        } else {
+            field.setCustomValidity("");
+            return true;
+        }
+    }
+
+    fieldsToValidate.forEach(({ field, validator, errorMessage }) => {
+        field.addEventListener("input", function () {
+            validateField(field, validator, errorMessage, false); // Clear errors dynamically on input
+        });
+    });
+
+    form.addEventListener("submit", function (event) {
+        let valid = true;
+
+        fieldsToValidate.forEach(({ field, validator, errorMessage }) => {
+            const isFieldValid = validateField(field, validator, errorMessage, true);
+            if (!isFieldValid) valid = false;
+        });
+
+        if (!valid) {
+            event.preventDefault(); // Prevent form submission if validation fails
+        }
+    });
+
+    // Google Places Autocomplete for Street Address
+    const streetAddressInput = document.getElementById("streetAddress");
+
+    if (streetAddressInput) {
+        const autocomplete = new google.maps.places.Autocomplete(streetAddressInput, {
+            types: ["address"], // Restrict suggestions to addresses only
+            componentRestrictions: { country: "ZA" } // Restrict to South Africa
+        });
+
+        autocomplete.addListener("place_changed", function () {
+            const place = autocomplete.getPlace();
+            const addressComponents = place.address_components;
+
+            // Helper function to find a component by type
+            const getComponent = (type) => {
+                const component = addressComponents.find((comp) => comp.types.includes(type));
+                return component ? component.long_name : "";
+            };
+
+            // Update fields
+            streetAddressInput.value = `${getComponent("street_number")} ${getComponent("route")}`.trim();
+            cityInput.value = getComponent("locality") || getComponent("administrative_area_level_2") || "";
+
+            // Update Province Dropdown
+            const provinceName = getComponent("administrative_area_level_1"); // Province name
+            if (provinceName) {
+                for (const option of provinceSelect.options) {
+                    if (option.textContent.trim() === provinceName) {
+                        option.selected = true;
+                        break;
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+
+
+
+
+
+
