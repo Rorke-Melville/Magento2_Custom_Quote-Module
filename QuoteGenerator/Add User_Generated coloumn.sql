@@ -1,0 +1,2 @@
+ALTER TABLE magento2.quote
+ADD COLUMN User_Generated TINYINT(1) NOT NULL DEFAULT 0;
