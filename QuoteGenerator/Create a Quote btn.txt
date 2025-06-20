@@ -1,6 +1,0 @@
-Add the followig code to vendor/magento/module-checkout/view/frontend/templates/onepage/link.phtml
-
-<button onclick="window.location.href='https://dev.gelmar.co.za/quote/quote/create/'" 
-            style="width: 100%; margin-top: 10px;" title="You Must Be Signed In">
-        <span>Create Quote</span>
-</button>
