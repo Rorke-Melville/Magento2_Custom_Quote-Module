@@ -105,3 +105,23 @@ app/code/Gelmar/QuoteGenerator/
 │   │   │   └── template/
 │   │   │       └── quote-generator
 ````
+
+## Technical Details
+- **Frontend**:
+  - Uses KnockoutJS for the checkout page component (`quote-generator.js` and `quote-generator.html`).
+  - Implements a custom modal popup with CSS styling for user validations and confirmations.
+  - Integrates with Magento’s checkout and customer data APIs for quote generation and user authentication.
+- **Backend**:
+  - Utilizes a custom controller (`GenerateQuote.php`) for handling AJAX requests to generate PDF quotes.
+  - Employs `PdfGenerator.php` for PDF creation, compatible with Magento’s backend architecture.
+- **Styling**:
+  - CSS is managed in `quote-generator.css`, loaded via `checkout_index_index.xml` for optimal performance.
+  - Includes responsive modal designs with hover effects and smooth transitions.
+
+## Development Notes
+- The module follows Magento 2 coding standards, with separate concerns for JavaScript (behavior), CSS (styling), and PHP (backend logic).
+- The checkout quote generation requires the "Click & Collect" shipping method (`flatrate_flatrate`) and a selected store.
+- Error handling includes user-friendly messages for login requirements, shipping method issues, and store selection.
+
+## Contributing
+Contributions are welcome! Please submit a pull request or open an issue on the [GitHub repository](https://github.com/Rorke-Melville/Magento2_Custom_Quote-Module) for bug reports, feature requests, or improvements.
