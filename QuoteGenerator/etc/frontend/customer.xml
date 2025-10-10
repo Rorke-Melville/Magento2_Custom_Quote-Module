@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+  Add “My Quotes” into Magento’s customer‑data “account” section
+  so it appears in the account pop‑up (and mini‑links).
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Customer:etc/customer.xsd">
+    <customer>
+        <account>
+            <!--
+              name: unique identifier (can be anything)
+              path:   frontName/controller/action
+              label:  displayed text (translatable)
+              sortOrder: controls position among the other links
+            -->
+            <link name="my-quotes"
+                  path="quote/quote/history"
+                  label="My Quotes"
+                  sortOrder="30"/>
+        </account>
+    </customer>
+</config>

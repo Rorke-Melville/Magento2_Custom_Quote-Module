@@ -158,31 +158,89 @@
     /* No Quotes Found Message */
     .no-quotes-message {
         text-align: center;
-        margin: 50px auto;
-        padding: 20px;
-        background-color: #f9f9f9;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        max-width: 600px;
-        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        margin: 60px auto;
+        padding: 40px;
+        background: #ffffff;
+        border-radius: 16px;
+        max-width: 700px;
+        transition: all 0.3s ease;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        box-shadow: 0px 16px 32px rgba(0, 0, 0, 0.2);
     }
 
     .no-quotes-message h2 {
-        font-size: 24px;
-        color: #333;
-        margin-bottom: 10px;
+        font-size: 32px;
+        color: #000000;
+        margin-bottom: 20px;
+        font-weight: 700;
+        letter Spacing: 0.5px;
+    }
+
+    .no-quotes-message-inner{
+        background: #f0fafa;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 24px;
+        border-left: 4px solid #0099a8;
     }
 
     .no-quotes-message p {
-        font-size: 16px;
-        color: #666;
+        font-size: 18px;
+        color: #2d2d2d;
+        line-height: 1.8;
+        margin-bottom: 25px;
     }
 
-    .btnBack{
+    .no-quotes-message a.checkout-link {
+        color: #0099a8;
+        text-decoration: none;
+        font-weight: 600;
+        position: relative;
+        transition: color 0.3s ease;
+    }
+
+    .no-quotes-message a.checkout-link::after {
+        content: '';
+        position: absolute;
+        width: 0;
+        height: 2px;
+        bottom: -2px;
+        left: 0;
+        background-color: #0099a8;
+        transition: width 0.3s ease;
+    }
+
+    .no-quotes-message a.checkout-link:hover::after {
+        width: 100%;
+    }
+
+    .no-quotes-message a.checkout-link:hover {
+        color: #007a87;
+    }
+
+    .no-quotes-message .btnBack {
+        display: inline-block;
+        padding: 14px 40px;
+        background: linear-gradient(90deg, #0099a8 0%, #00b7c2 100%);
+        color: white !important;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+    .no-quotes-message .btnBack:hover {
+        background: linear-gradient(90deg, #007a87 0%, #0099a8 100%);
+        transform: translateX(-10px);
+        box-shadow: 0px 4px 12px rgba(0, 153, 168, 0.3);
+    }
+
+    .btnBack {
         margin-top: 10px;
     }
-    .btnBack:hover{
-        transform: translateX(-10px)
+    .btnBack:hover {
+        transform: translateX(-10px);
     }
 </style>
 
@@ -206,11 +264,11 @@ if ($quotes = $block->getData('quotes')):
                         <h3>Quote #<?= $quote['quote_id'] ?></h3>
                         <p><strong>Date Created:</strong> <?= $quote['quote_date'] ?></p>
                         <p><strong>Total Price:</strong> ZAR <?= number_format($quote['total_price'], 2) ?></p>
-                        <p><strong>Status:</strong> <span class="status <?= !$quote['is_active'] ? 'inactive' : '' ?>"><?= $quote['is_active'] ? 'Active' : 'Inactive' ?></span></p>
+                        <!--<p><strong>Status:</strong> <span class="status <?= !$quote['is_active'] ? 'inactive' : '' ?>"><?= $quote['is_active'] ? 'Active' : 'Inactive' ?></span></p>-->
                         <!-- Button Container -->
                         <div class="btn-container">
                             <a href="<?= $quote['is_active'] 
-                                ? $block->getUrl('checkout/cart/') 
+                                ? $block->getUrl('checkout/') 
                                 : $block->getUrl('quote/quote/view', ['quote_id' => $quote['quote_id']]) ?>" 
                                class="btnView" title="View Quote">VIEW</a>
                         </div>
@@ -231,11 +289,15 @@ if ($quotes = $block->getData('quotes')):
     <?php else: ?>
         <!-- No Quotes Found Message -->
         <div class="no-quotes-message">
-            <h2>No Quotes Found</h2>
-            <p>It looks like you don't have any quotes yet. You can create a new quote by clicking the "Create Quote" button on the <a href="https://dev.gelmar.co.za/checkout/cart/"><span class="footer-store-link" style="text-decoration: underline; font-weight: 600;"> cart </span></a> page.</p>
+            <h2>No Quotes Available</h2>
+            <div class="no-quotes-message-inner">
+                <p>It appears you haven’t created any quotes yet. To create one, simply add your desired products to the cart and then head over to the <a href="https://dev.gelmar.co.za/checkout/" class="checkout-link">checkout</a> page to generate your new quote. Please note: Quotes are for in-store completion only.</p>
+            </div>
+            <a href="https://dev.gelmar.co.za/customer/account/" class="btnBack">Back to Account</a>
         </div>
     <?php endif; ?>
 </div>
+<?php if (!empty($filteredQuotes)): ?>
+    <button class="action button secondary btnBack" onclick="window.location.href='https://dev.gelmar.co.za/customer/account/'">Back</button>
 <?php endif; ?>
-
-<button class="action button secondary btnBack" onclick="window.location.href='https://dev.gelmar.co.za/customer/account/'">Back</button>
+<?php endif; ?>

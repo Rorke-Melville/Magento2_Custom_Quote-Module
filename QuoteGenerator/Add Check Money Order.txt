@@ -3,9 +3,10 @@ Add Check/Money Order Payment Method
 - Stores > Config > Sales > Payment Methods
 - Enable Check/Money Order
 
-Remove it on the Frontend on the checkout page
 
-- Add the following to custom CSS
+Remove it on Frontend on checkout page
+
+- Add following to custom CSS
 - #checkout-payment-method-load > div > div > div:nth-child(2) {
 display: none;
 }

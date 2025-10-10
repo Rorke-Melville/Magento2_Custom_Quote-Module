@@ -1,1 +1,7 @@
-{"quote_id":"92-788034","reserved_order_number":264616,"QuoteDate":"2025-06-20 09:26:22","DeliveryTypeId":1,"DeliveryMethod":"flatrate_flatrate","DeliveryMethodDescription":"Collect from Gelmar Umhlanga","DeliveryCost":0,"FulFillingStoreCode":"52","QuoteTotal":189,"QtyTotal":1,"CustomerName":"Rorke Melville","CustomerTelNo":"0832297300","DeliveryAddress":"20 Rustic Close","DeliveryCity":"Briardene","DeliveryProvinceState":"Kwazulu-Natal","Country":"ZA","products":[{"name":"9 Wine Bottle Ring Holder, Black","sku":"6357","price":"189.0000","quantity":1,"subtotal":189},{"name":"Chisel, 13mm","sku":"5392","price":"80.0000","quantity":1,"subtotal":80}]}
+[
+    {
+        "quote_id": "92-788038",
+        "QuoteStatusDesc": "Completed",
+        "sequence_value": "264592"
+    }
+]

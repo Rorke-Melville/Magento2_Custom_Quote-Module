@@ -17,6 +17,25 @@ class PdfGenerator
 {
     protected $directoryList;
     protected $fileDriver;
+    protected $pdf;
+    protected $currentPage;
+    protected $currentPageIndex = 0;
+    
+    // Constants for better maintainability
+    const LOGO_WIDTH = 175;
+    const LOGO_HEIGHT = 50;
+    const PAGE_MARGIN = 40;
+    const MIN_PAGE_MARGIN = 100;
+    const AVERAGE_CHAR_WIDTH = 6.5;
+    const TEXT_PADDING = 5;
+    const LINE_HEIGHT = 15;
+    const SECTION_SPACING = 20;
+    const VAT_RATE = 1.15;
+    const FOOTER_HEIGHT = 200; // Height reserved for footer content
+    
+    // Column configuration
+    const COLUMN_WIDTHS = [70, 210, 60, 60, 60, 60];
+    const COLUMN_HEADERS = ['Item Code', 'Description', 'Qty', 'Unit Incl.', 'Vat', 'Total'];
 
     public function __construct(
         DirectoryList $directoryList,
@@ -26,310 +45,703 @@ class PdfGenerator
         $this->fileDriver = $fileDriver;
     }
 
-    public function generate(CartInterface $quote)
+    /**
+     * Add background image that spans the entire A4 page
+     */
+    protected function addBackgroundImage()
     {
-        $pdf = new Zend_Pdf();
-        $page = new Zend_Pdf_Page(Zend_Pdf_Page::SIZE_A4);
-        $pdf->pages[] = $page;
+        $backgroundImagePath = BP . '/app/code/Gelmar/QuoteGenerator/proForma.jpg';
+        
+        try {
+            if ($this->fileDriver->isExists($backgroundImagePath)) {
+                // Determine image type and create appropriate resource
+                $imageExtension = strtolower(pathinfo($backgroundImagePath, PATHINFO_EXTENSION));
+                
+                if ($imageExtension === 'png') {
+                    $backgroundImage = new Zend_Pdf_Resource_Image_Png($backgroundImagePath);
+                } elseif (in_array($imageExtension, ['jpg', 'jpeg'])) {
+                    $backgroundImage = new Zend_Pdf_Resource_Image_Jpeg($backgroundImagePath);
+                } else {
+                    throw new \Exception('Unsupported image format: ' . $imageExtension);
+                }
 
-        $pageWidth = $page->getWidth();
+                // A4 page dimensions in points (72 points per inch)
+                // A4 = 210mm x 297mm = 595.28 x 841.89 points
+                $pageWidth = 595.28;
+                $pageHeight = 841.89;
+
+                // Draw the background image to cover the entire page
+                $this->currentPage->drawImage(
+                    $backgroundImage,
+                    0,           // x1 (left edge)
+                    0,           // y1 (bottom edge)
+                    $pageWidth,  // x2 (right edge)
+                    $pageHeight  // y2 (top edge)
+                );
+            }
+        } catch (\Exception $e) {
+            // If background image fails to load, you can either:
+            // 1. Log the error and continue without background
+            // 2. Add a text message indicating the issue
+            error_log('Background image failed to load: ' . $e->getMessage());
+            
+            // Optional: Add a subtle background color as fallback
+            $this->currentPage->setFillColor(new Zend_Pdf_Color_GrayScale(0.95));
+            $this->currentPage->drawRectangle(0, 0, 595.28, 841.89, Zend_Pdf_Page::SHAPE_DRAW_FILL);
+        }
+    }
+
+    /**
+     * Calculate accurate text width for Zend_Pdf
+     */
+    protected function getTextWidth($text, $font, $fontSize)
+    {
+        $drawingText = iconv('UTF-8', 'UTF-16BE//IGNORE', $text);
+        $characters = [];
+        for ($i = 0; $i < strlen($drawingText); $i += 2) {
+            $characters[] = (ord($drawingText[$i]) << 8) | ord($drawingText[$i + 1]);
+        }
+        $glyphs = $font->glyphNumbersForCharacters($characters);
+        $widths = $font->widthsForGlyphs($glyphs);
+        return (array_sum($widths) / $font->getUnitsPerEm()) * $fontSize;
+    }
+
+    /**
+     * Wrap text to fit within a specified width
+     */
+    protected function wrapText($text, $maxWidth, $font, $fontSize)
+    {
+        $words = explode(' ', $text);
+        $lines = [];
+        $currentLine = '';
+
+        foreach ($words as $word) {
+            $testLine = $currentLine . ($currentLine ? ' ' : '') . $word;
+            $testWidth = $this->getTextWidth($testLine, $font, $fontSize);
+
+            if ($testWidth <= $maxWidth) {
+                $currentLine = $testLine;
+            } else {
+                if ($currentLine) {
+                    $lines[] = $currentLine;
+                    $currentLine = $word;
+                } else {
+                    $lines[] = $this->breakLongWord($word, $maxWidth, $font, $fontSize);
+                    $currentLine = '';
+                }
+            }
+        }
+
+        if ($currentLine) {
+            $lines[] = $currentLine;
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Break a long word that doesn't fit in the available width
+     */
+    protected function breakLongWord($word, $maxWidth, $font, $fontSize)
+    {
+        $chars = str_split($word);
+        $result = '';
+        
+        foreach ($chars as $char) {
+            $testText = $result . $char;
+            if ($this->getTextWidth($testText, $font, $fontSize) <= $maxWidth) {
+                $result .= $char;
+            } else {
+                break;
+            }
+        }
+        
+        return $result ?: $word[0];
+    }
+
+    /**
+     * Check if we need a new page and create one if necessary
+     */
+    protected function checkAndCreateNewPage($currentY, $minMargin = self::MIN_PAGE_MARGIN, $reserveFooterSpace = true)
+    {
+        $requiredMargin = $reserveFooterSpace ? ($minMargin + self::FOOTER_HEIGHT) : $minMargin;
+        
+        if ($currentY <= $requiredMargin) {
+            $this->createNewPage();
+            return 750;
+        }
+        return $currentY;
+    }
+
+    /**
+     * Create a new page and set it as current
+     */
+    protected function createNewPage()
+    {
+        $newPage = new Zend_Pdf_Page(Zend_Pdf_Page::SIZE_A4);
+        $this->pdf->pages[] = $newPage;
+        $this->currentPage = $newPage;
+        $this->currentPageIndex++;
+        
+        // Add background image to new page
+        $this->addBackgroundImage();
+        $this->addPageHeader();
+    }
+
+    /**
+     * Add header to continuation pages
+     */
+    protected function addPageHeader()
+    {
+        $this->addLogo(self::PAGE_MARGIN, 750);
+        
+        // Add page number
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 9);
+        $this->currentPage->drawText('Page ' . ($this->currentPageIndex + 1), 500, 780);
+    }
+
+    /**
+     * Add logo to the page
+     */
+    protected function addLogo($x, $y)
+    {
         $logoPath = BP . '/app/code/Gelmar/QuoteGenerator/Gelmar.png';
-
         try {
             if ($this->fileDriver->isExists($logoPath)) {
                 $image = str_ends_with(strtolower($logoPath), '.png')
                     ? new Zend_Pdf_Resource_Image_Png($logoPath)
                     : new Zend_Pdf_Resource_Image_Jpeg($logoPath);
 
-                $logoWidth = 175;
-                $logoHeight = 50;
-                $startingX = 40;
-                $bottomY = 780;
-
-                $page->drawImage($image, $startingX, $bottomY, $startingX + $logoWidth, $bottomY + $logoHeight);
+                $this->currentPage->drawImage(
+                    $image, 
+                    $x, 
+                    $y, 
+                    $x + self::LOGO_WIDTH, 
+                    $y + self::LOGO_HEIGHT
+                );
             }
         } catch (\Exception $e) {
-            // Handle missing or invalid logo
-            $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 12);
-            $page->drawText('Error loading logo: ' . $e->getMessage(), 50, 800);
+            $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 10);
+            $this->currentPage->drawText('Error loading logo: ' . $e->getMessage(), 50, $y + 30);
         }
-
-        $startX = 40;
-        $startY = 765;
-
-        $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 10);
-        $page->drawText('20 Rustic Close', $startX, $startY);
-        $page->drawText('P.O. Box 2753', 400, $startY);
-        $startY -= 10;
-        $page->drawText('Briardene Industrial Park', $startX, $startY);
-        $page->drawText('Durban', 400, $startY);
-        $startY -= 10;
-        $page->drawText('Durban', $startX, $startY);
-        $page->drawText('4000', 400, $startY);
-        $startY -= 10;
-        $page->drawText('4051', $startX, $startY);
-
-        $startY -= 20;
-        $page->drawText('Tel: 031 573 2490', $startX, $startY);
-        $page->drawText('Vat Reg No: 4270107271', 400, $startY);
-        $startY -= 10;
-        $page->drawText('Fax:' , $startX, $startY);
-        $startY -= 10;
-
-        // Set rectangle dimensions
-        $rectStartX = $startX - 10; // Slightly wider on the left
-        $rectEndX = 555; // Slightly wider on the right
-        $rectStartY = $startY; // Adjust to place it above text
-        $rectEndY = $startY - 25; // Height of the rectangle
-
-        // Draw the rectangle with a fill color
-        $page->setFillColor(new Zend_Pdf_Color_GrayScale
-
-(0.75)); // Light grey fill
-        $page->setLineColor(new Zend_Pdf_Color_RGB(0, 0, 0)); // Black border
-        $page->setLineWidth(1); // Border width
-        $page->drawRectangle($rectStartX, $rectStartY, $rectEndX, $rectEndY, Zend_Pdf_Page::SHAPE_DRAW_FILL_AND_STROKE);
-
-        // Add centered text to the rectangle
-        $text = 'PRO FORMA INVOICE';
-        // Set the font
-        $font = Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD);
-        $page->setFont($font, 16);
-        $averageCharWidth = 7; // Approximate width in points
-        $textWidth = strlen($text) * $averageCharWidth;
-        // Calculate X position to center the text
-        $textStartX = ($rectStartX + (($rectEndX - $rectStartX) - $textWidth) / 2) - 20;
-        // Calculate Y position to center text vertically within the rectangle
-        $textStartY = $rectEndY - (($rectEndY - $rectStartY) / 2) - 7; // Adjust height for font baseline
-        // Draw the text
-        $page->setFillColor(new Zend_Pdf_Color_RGB(0, 0, 0)); // Black text color
-        $page->drawText($text, $textStartX, $textStartY, 'UTF-8');
-
-        $startY -= 50;
-        $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 12);
-        $customerName = $quote->getCustomerFirstname() . ' ' . $quote->getCustomerLastname();
-        $customerNum = $quote->getBillingAddress()->getTelephone();
-        $shippingAddress = $quote->getShippingAddress();
-        $shippingAmount = $shippingAddress->getShippingAmount();
-        $street = $shippingAddress->getData('street');
-        $province = $shippingAddress->getData('region');
-        $city = $shippingAddress->getData('city');
-
-        if (!$quote->getCustomerId() && $shippingAddress) {
-            $customerName = $shippingAddress->getFirstname() . ' ' . $shippingAddress->getLastname();
-        }
-
-        $page->drawText('Quote for: ' . $customerName . ' (' . $customerNum . ')', $startX, $startY);
-        $date = date('d-m-Y');
-        $page->drawText('Date: ' . $date, 400, $startY);
-        $startY -= 15;
-        $page->drawText('Quote ID: ' . $quote->getId(), $startX, $startY);
-
-        //Product Section
-        $totalPrice = 0;
-        $startY -= 20;
-        // Define the widths for the rectangles (with 5 units decrementing from left to right)
-        $widths = [
-            360, // Width for 'Item(s)'
-            60,  // Width for 'Price' (width of 'Item(s)' - 5)
-            30,  // Width for 'Qty' (width of 'Price' - 5)
-            70  // Width for 'Subtotal' (width of 'Qty' - 5)
-        ];
-        // Text for each heading
-        $headings = [
-            'Item(s)',
-            'Price',
-            'Qty',
-            'Subtotal'
-        ];
-        // Starting X position (keep it for the rest of the content)
-        $currentX = $startX -10; // Create a new variable for heading positions
-        // Draw rectangles and center text
-        foreach ($headings as $index => $heading) {
-            // New variables for the current heading rectangle and text
-            $currentRectStartX = $currentX; // X position for the rectangle
-            $currentRectEndX = $currentX + $widths[$index]; // X position for the end of the rectangle
-            $currentRectStartY = $startY; // Y position for the top of the rectangle
-            $currentRectEndY = $startY - 15; // Y position for the bottom of the rectangle
-            // Draw the rectangle
-            $page->setLineColor(new Zend_Pdf_Color_RGB(0, 0, 0)); // Black border
-            $page->setLineWidth(1); // Border width
-            $page->drawRectangle($currentRectStartX, $currentRectStartY, $currentRectEndX, $currentRectEndY, Zend_Pdf_Page::SHAPE_DRAW_STROKE);
-            // Set the font and draw the text in the center
-            $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD), 12);         
-            // Calculate text width to center it
-            $textWidth = strlen($heading) * 7; // Approximate text width
-            $currentTextStartX = $currentRectStartX + (($currentRectEndX - $currentRectStartX) - $textWidth) / 2; // X position to center text
-            $currentTextStartY = $currentRectStartY - 12; // Y position to center text vertically
-            // Draw the text
-            $page->drawText($heading, $currentTextStartX, $currentTextStartY);
-            // Move to the next X position for the next heading
-            $currentX += $widths[$index]; // Increment $currentX for the next heading
-        }
-        $startY -= 30; // Move Y position down after headings
-        //Individual Products
-        $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 12);
-        $itemNumber = 1;
-        foreach ($quote->getAllItems() as $item) {
-            $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 12);
-            $productName = $item->getName();
-            $sku = $item->getSku();
-            $weight = $item->getWeight();
-            $quantity = $item->getQty();
-            $price = $item->getPrice();
-            $itemTotal = $price * $quantity;
-            $page->drawText($itemNumber . '.', $startX, $startY);
-            $page->drawText($productName, $startX + 20, $startY);
-            $page->drawText(number_format($price, 2), 400, $startY);
-            $page->drawText($quantity, 465, $startY);
-            $page->drawText(number_format($itemTotal, 2), 500, $startY);
-            $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 10);
-            $startY -= 15;
-            $page->drawText('SKU: ' . $sku, $startX + 20, $startY);
-            $startY -= 15;
-            $page->drawText('Weight: ' . number_format($weight, 2) . ' kg', $startX + 20, $startY);
-            $startY -= 20;
-            $itemNumber++;
-            $totalPrice += $itemTotal;
-        }
-        $totalCost = $shippingAmount + $totalPrice;
-        if ($shippingAmount == 0) {
-            $startY -= 10;
-            $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD), 12);
-            $page->drawText('Total Cost: R' . number_format($totalCost, 2), 400, $startY);
-        } else {
-            $startY -= 10;
-            $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD), 12);
-            $page->drawText('Subtotal: R' . number_format($totalPrice, 2), 400, $startY);
-            $startY -= 20;
-            $page->drawText('Delivery: R' . number_format($shippingAmount, 2), 400, $startY);
-            $startY -= 20;
-            $page->drawText('Total Cost: R' . number_format($totalCost, 2), 400, $startY);
-        }
-
-        //Draw Line
-        $startY -= 5;
-        $page->setLineColor(new Zend_Pdf_Color_RGB(0, 0, 0));
-        $page->drawLine($rectStartX, $startY, $rectEndX, $startY);
-        $startY -= 1;
-        // Draw the grey rectangle for "Delivery/Collection"
-        $deliveryRectStartY = $startY; // Position the rectangle below the previous content
-        $deliveryRectEndY = $deliveryRectStartY - 20; // Height of the rectangle
-        $page->setFillColor(new Zend_Pdf_Color_GrayScale(0.75)); // Grey fill
-        $page->drawRectangle($rectStartX, $deliveryRectStartY, $rectEndX, $deliveryRectEndY, Zend_Pdf_Page::SHAPE_DRAW_FILL);
-        // Add centered text to the rectangle
-        $deliveryText = 'DELIVERY/COLLECTION';
-        $page->setFont($font, 12); // Use smaller font size
-        // Set the font color to black
-        $page->setFillColor(new Zend_Pdf_Color_RGB(0, 0, 0));
-        // Approximate the text width for centering
-        $deliveryTextWidth = strlen($deliveryText) * $averageCharWidth; // Using the same average char width
-        // Calculate X position to center the text
-        $deliveryTextStartX = ($rectStartX + (($rectEndX - $rectStartX) - $deliveryTextWidth) / 2) - 8; 
-        // Calculate Y position to center the text vertically within the rectangle
-        $deliveryTextStartY = $deliveryRectEndY - (($deliveryRectEndY - $deliveryRectStartY) / 2) - 5; // Adjust height for font baseline
-        // Draw the centered text
-        $page->drawText($deliveryText, $deliveryTextStartX, $deliveryTextStartY);
-        $startY -= 20; 
-        
-        //Draw Click n Collect store OR Delivery Address
-        if ($shippingAmount == 0) {
-            $startY -= 15;
-            
-            // Get the store information from quote data
-            $storeInfo = $quote->getData('selected_store_info');
-            
-            if ($storeInfo) {
-                // Parse store info (format: "store_id, Collect from Store Name")
-                $storeParts = explode(',', $storeInfo, 2);
-                $storeName = count($storeParts) > 1 ? trim($storeParts[1]) : 'Click-n-Collect Store';
-            } else {
-                $storeName = 'Click-n-Collect Store';
-            }
-            
-            $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 12);
-            $page->drawText('- Click n Collect', $startX, $startY);
-            $startY -= 15;
-            $page->drawText('- Store: ' . $storeName, $startX, $startY);
-        } else {
-            $startY -= 15;
-            $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 12);
-            $page->drawText('- Delivery', $startX, $startY);
-            $startY -= 15;
-            $page->drawText('- Address: ' . $street, $startX, $startY);
-            $startY -= 15;
-            $page->drawText('- City: ' . $city, $startX, $startY);
-            $startY -= 15;
-            $page->drawText('- Province: ' . $province, $startX, $startY);
-        }
-
-        // Draw a black line across the page
-        $lineStartX = $rectStartX; // Same as rectangle's start X
-        $lineEndX = $rectEndX;     // Same as rectangle's end X
-        $lineY = $startY - 10;   // Just below the first rectangle
-        $page->setLineWidth(1);    // Line thickness
-        $page->setLineColor(new Zend_Pdf_Color_RGB(0, 0, 0)); // Black color
-        $page->drawLine($lineStartX, $lineY, $lineEndX, $lineY);
-        // Draw the second grey rectangle
-        $secondRectStartY = $lineY - 2; // Position below the line
-        $secondRectEndY = $secondRectStartY - 20; // Height of the rectangle
-        $page->setFillColor(new Zend_Pdf_Color_GrayScale(0.75)); // Grey fill
-        $page->drawRectangle($rectStartX, $secondRectStartY, $rectEndX, $secondRectEndY, Zend_Pdf_Page::SHAPE_DRAW_FILL);
-        // Add centered text to the second rectangle
-        $secondText = 'PROFORMA INVOICE ONLY - DO NOT RELEASE STOCK';
-        $page->setFont($font, 12); // Use smaller font size
-        // Approximate the text width for centering
-        $secondTextWidth = strlen($secondText) * $averageCharWidth; // Using the same average char width
-        // Calculate X position to center the text
-        $secondTextStartX = ($rectStartX + (($rectEndX - $rectStartX) - $secondTextWidth) / 2)- 15;
-        // Calculate Y position to center the text vertically within the rectangle
-        $secondTextStartY = $secondRectEndY - (($secondRectEndY - $secondRectStartY) / 2) - 5; // Adjust height for font baseline
-
-        // Draw the second text
-        $page->setFillColor(new Zend_Pdf_Color_RGB(0, 0, 0)); // Black text color
-        $page->drawText($secondText, $secondTextStartX, $secondTextStartY, 'UTF-8');
-        // Set font for text
-        $page->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 10);
-        // Create the unique payment reference with the quote ID
-        $quoteId = $quote->getId();
-        $paymentReference = 'UNIQUE PAYMENT REFERENCE FOR THIS EFT PAYMENT IS :- ' . '92-' . $quoteId;
-        // Define the text
-        $textLines = [
-            "Prices are valid for 14 days from issue date OR while stocks last.",
-            "Please confirm Stock Availability before making payment.",
-            "I hereby confirm that the order items and quantities are correct.",
-            "PAYMENT OPTIONS:-",
-            "***Pay in-store by Cash or Credit/Debit card, to avoid delays in payment processing.***",
-            "EFT payments may take up to 3 business days to clear, goods will only be released",
-            "once the funds reflect in our account.",
-            "Proof of EFT payment must be emailed to eft@gelmar.co.za",
-            "Banking details:- Nedbank, Account number 1011474832, Branch code 164826",
-            $paymentReference,
-            "Customer order form must be presented upon collection.",
-            "All rejected/returned deliveries will incur a 15% handling charge."
-        ];
-        // Starting Y position for text
-        $startY -= 50; // Adjust as needed
-        // Loop through each line of text and draw it with the correct color
-        foreach ($textLines as $index => $line) {
-            // Set color for specific lines
-            if (in_array($index, [0, 1, 4, 9])) {
-                // Set red color for 1st, 2nd, 5th, and 10th lines
-                $page->setFillColor(new Zend_Pdf_Color_RGB(1, 0, 0)); // Red color
-            } else {
-                // Set black color for the other lines
-                $page->setFillColor(new Zend_Pdf_Color_RGB(0, 0, 0)); // Black color
-            }       
-            // Draw the text line
-            $page->drawText($line, $startX, $startY);            
-            // Move the Y position down for the next line
-            $startY -= 12; // Adjust as needed for spacing between lines
-        }
-
-        //Generate The PDF
-        return $pdf;
     }
 
+    /**
+     * Draw a filled rectangle with text
+     */
+    protected function drawTextRectangle($startX, $endX, $startY, $endY, $text, $fontSize = 16, $isBold = true)
+    {
+        // Draw rectangle
+        $this->currentPage->setFillColor(new Zend_Pdf_Color_GrayScale(0.75));
+        $this->currentPage->setLineColor(new Zend_Pdf_Color_RGB(0, 0, 0));
+        $this->currentPage->setLineWidth(1);
+        $this->currentPage->drawRectangle($startX, $startY, $endX, $endY, Zend_Pdf_Page::SHAPE_DRAW_FILL_AND_STROKE);
+
+        // Add centered text
+        $font = $isBold 
+            ? Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD)
+            : Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA);
+        
+        $this->currentPage->setFont($font, $fontSize);
+        $textWidth = $this->getTextWidth($text, $font, $fontSize);
+        $textStartX = $startX + (($endX - $startX) - $textWidth) / 2;
+        $textStartY = $endY - (($endY - $startY) / 2) - 7;
+        
+        $this->currentPage->setFillColor(new Zend_Pdf_Color_RGB(0, 0, 0));
+        $this->currentPage->drawText($text, $textStartX, $textStartY, 'UTF-8');
+    }
+
+    /**
+     * Add company information section
+     */
+    protected function addCompanyInfo($startY)
+    {
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 9);
+        
+        $companyInfo = [
+            ['20 Rustic Close', 'P.O. Box 2753'],
+            ['Briardene Industrial Park', 'Durban'],
+            ['Durban', '4000'],
+            ['4051', '']
+        ];
+        
+        foreach ($companyInfo as $line) {
+            $this->currentPage->drawText($line[0], self::PAGE_MARGIN, $startY);
+            if ($line[1]) {
+                $this->currentPage->drawText($line[1], 400, $startY);
+            }
+            $startY -= 9;
+        }
+        
+        $startY -= 9;
+        $this->currentPage->drawText('Tel: 031 573 2490', self::PAGE_MARGIN, $startY);
+        $this->currentPage->drawText('Vat Reg No: 4270107271', 400, $startY);
+        $startY -= 9;
+        $this->currentPage->drawText('Fax:', self::PAGE_MARGIN, $startY);
+        $this->currentPage->drawText('1935/007335/07', 400, $startY);
+        
+        return $startY - 9;
+    }
+
+    /**
+     * Add customer information section
+     */
+    protected function addCustomerInfo(CartInterface $quote, $startY)
+    {
+        // Get customer and address information
+        $customerName = $quote->getCustomerFirstname() . ' ' . $quote->getCustomerLastname();
+        $shippingAddress = $quote->getShippingAddress();
+        $billingAddress = $quote->getBillingAddress();
+        
+        // Use shipping address if available, otherwise billing address
+        $address = $shippingAddress ?: $billingAddress;
+        
+        if (!$quote->getCustomerId() && $address) {
+            $customerName = $address->getFirstname() . ' ' . $address->getLastname();
+        }
+        
+        // Extract address details
+        $street = $address ? implode(' ', $address->getStreet()) : '';
+        $city = $address ? $address->getCity() : '';
+        $postcode = $address ? $address->getPostcode() : '';
+        $region = $address ? $address->getRegion() : '';
+        $telephone = $address ? $address->getTelephone() : '';
+        $email = $quote->getCustomerEmail() ?: ($address ? $address->getEmail() : '');
+        
+        $storeInfo = $this->formatStoreInfo($quote->getData('selected_store_info'));
+        $date = date('d-m-Y');
+        $quoteId = '94-' . $quote->getId();
+        
+        // Left side - Customer info (bold)
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD), 10);
+        
+        // Customer name
+        $this->currentPage->drawText($customerName, self::PAGE_MARGIN, $startY);
+        $startY -= 25; // Space after name
+        
+        // Street address
+        if ($street) {
+            $this->currentPage->drawText($street, self::PAGE_MARGIN, $startY);
+            $startY -= 12;
+        }
+        
+        // City
+        if ($city) {
+            $this->currentPage->drawText($city, self::PAGE_MARGIN, $startY);
+            $startY -= 12;
+        }
+        
+        // Postal code
+        if ($postcode) {
+            $this->currentPage->drawText($postcode, self::PAGE_MARGIN, $startY);
+            $startY -= 12;
+        }
+        
+        // Province/Region
+        if ($region) {
+            $this->currentPage->drawText($region, self::PAGE_MARGIN, $startY);
+            $startY -= 25; // Space after address block
+        }
+        
+        // Phone number
+        if ($telephone) {
+            $this->currentPage->drawText($telephone, self::PAGE_MARGIN, $startY);
+            $startY -= 12;
+        }
+        
+        // Email
+        if ($email) {
+            $this->currentPage->drawText($email, self::PAGE_MARGIN, $startY);
+            $startY -= 12;
+        }
+        
+        // Right side - Quote details
+        $rightStartY = $startY + (110); // Reset to top position for right side
+        
+        // Quote ID
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 10);
+        $this->currentPage->drawText('Quote ID: ', 400, $rightStartY);
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD), 10);
+        $this->currentPage->drawText($quoteId, 445, $rightStartY);
+        $rightStartY -= 12;
+        
+        // Date
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 10);
+        $this->currentPage->drawText('Date: ', 400, $rightStartY);
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD), 10);
+        $this->currentPage->drawText($date, 425, $rightStartY);
+        $rightStartY -= 12;
+        
+        // Store
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 10);
+        $this->currentPage->drawText('Store: ', 400, $rightStartY);
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD), 10);
+        $this->currentPage->drawText($storeInfo, 428, $rightStartY);
+        
+        return $startY;
+    }
+
+    /**
+     * Format store information
+     */
+    protected function formatStoreInfo($storeInfo)
+    {
+        if (!$storeInfo) {
+            return '';
+        }
+        
+        list($storeNumber, $rest) = explode(',', $storeInfo, 2);
+        $storeNumber = trim($storeNumber);
+        
+        $storeName = '';
+        if (preg_match('/Gelmar\s+(.+)$/', $storeInfo, $matches)) {
+            $storeName = trim($matches[1]);
+        }
+        
+        return $storeNumber . ' - ' . $storeName;
+    }
+
+    /**
+     * Add product table headers
+     */
+    protected function addProductTableHeaders($startY)
+    {
+        $startX = self::PAGE_MARGIN - 10;
+        $currentX = $startX;
+
+        $this->currentPage->setFont(
+            Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD),
+            10
+        );
+
+        foreach (self::COLUMN_HEADERS as $index => $heading) {
+            $currentRectStartX = $currentX;
+            $currentRectEndX = $currentX + self::COLUMN_WIDTHS[$index];
+            $currentRectStartY = $startY;
+            $currentRectEndY = $startY - self::LINE_HEIGHT;
+
+            // Draw column border
+            $this->currentPage->setLineColor(new Zend_Pdf_Color_RGB(0, 0, 0));
+            $this->currentPage->setLineWidth(1);
+            $this->currentPage->drawRectangle(
+                $currentRectStartX,
+                $currentRectStartY,
+                $currentRectEndX,
+                $currentRectEndY,
+                Zend_Pdf_Page::SHAPE_DRAW_STROKE
+            );
+
+            // Center text in column
+            $textWidth = strlen($heading) * (self::AVERAGE_CHAR_WIDTH - 0.5);
+            $currentTextStartX = $currentRectStartX + (($currentRectEndX - $currentRectStartX) - $textWidth) / 2;
+            $currentTextStartY = $currentRectStartY - 11;
+
+            // Manual adjustment for "Unit Incl."
+            if ($heading === 'Unit Incl.') {
+                $currentTextStartX += 6;
+            }
+
+            $this->currentPage->drawText($heading, $currentTextStartX, $currentTextStartY);
+            $currentX += self::COLUMN_WIDTHS[$index];
+        }
+
+        return $startY - 30;
+    }
+
+    /**
+     * Helper function to right-align text in column
+     */
+    protected function getRightAlignedPosition($text, $colIndex, $colX, $font, $fontSize)
+    {
+        $textWidth = $this->getTextWidth($text, $font, $fontSize);
+        $rightEdge = $colX[$colIndex] + self::COLUMN_WIDTHS[$colIndex] - self::TEXT_PADDING;
+        return $rightEdge - $textWidth;
+    }
+
+    /**
+     * Add product items to the PDF
+     */
+    protected function addProductItems(CartInterface $quote, $startY)
+    {
+        $colStartX = self::PAGE_MARGIN - 10;
+        $colX = [];
+        $currentX = $colStartX;
+        
+        // Precompute column X positions
+        foreach (self::COLUMN_WIDTHS as $width) {
+            $colX[] = $currentX;
+            $currentX += $width;
+        }
+
+        $this->currentPage->setFont(
+            Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA),
+            10
+        );
+
+        $numericFont = Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA);
+        $numericFontSize = 10;
+
+        foreach ($quote->getAllItems() as $item) {
+            $sku = $item->getSku();
+            $productName = $item->getName();
+            $quantity = (int)$item->getQty();
+            $price = $item->getPrice();
+            $itemTotal = $price * $quantity;
+
+            // Calculate VAT
+            $unitExcl = $price / self::VAT_RATE;
+            $unitVat = $price - $unitExcl;
+            $vatAmount = $unitVat * $quantity;
+
+            // Wrap product description
+            $descStartX = $colX[1] + self::TEXT_PADDING;
+            $descWidth = self::COLUMN_WIDTHS[1] + 10;
+            $productNameFont = Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA);
+            $productNameLines = $this->wrapText($productName, $descWidth, $productNameFont, 10);
+
+            // Calculate required height
+            $itemHeight = (count($productNameLines) * 12) + 15;
+
+            // Check for page break (with footer space reserved)
+            $startY = $this->checkAndCreateNewPage($startY, $itemHeight + 50, true);
+
+            // Redraw headers if new page
+            if ($this->currentPageIndex > 0 && $startY > 700) {
+                $startY = $this->addProductTableHeaders($startY - 30);
+            }
+
+            $currentLineY = $startY;
+            $firstLineY = $startY;
+
+            // Column 1: Item Code
+            $this->currentPage->setFont($numericFont, $numericFontSize);
+            $this->currentPage->drawText($sku, $colX[0] + self::TEXT_PADDING, $currentLineY);
+
+            // Column 2: Description (wrapped)
+            foreach ($productNameLines as $line) {
+                $this->currentPage->drawText($line, $descStartX, $currentLineY);
+                $currentLineY -= 12;
+            }
+
+            // Numeric columns (right-aligned)
+            $numericData = [
+                2 => (string)$quantity,
+                3 => number_format($price, 2),
+                4 => number_format($vatAmount, 2),
+                5 => number_format($itemTotal, 2)
+            ];
+
+            foreach ($numericData as $colIndex => $value) {
+                $drawX = $this->getRightAlignedPosition($value, $colIndex, $colX, $numericFont, $numericFontSize);
+                $this->currentPage->drawText($value, $drawX, $firstLineY);
+            }
+
+            $startY = $currentLineY - 1;
+        }
+
+        return $startY;
+    }
+
+    /**
+     * Add footer content to the current page
+     */
+    protected function addFooter(CartInterface $quote, $forceNewPage = false)
+    {
+        // Calculate totals
+        $totalInclVat = $quote->getGrandTotal() ?? 0;
+        $totalExclVat = $totalInclVat / self::VAT_RATE;
+        $vatTotal = $totalInclVat - $totalExclVat;
+        
+        // If forcing new page or not enough space, create new page
+        if ($forceNewPage) {
+            $this->createNewPage();
+            $startY = 700;
+        } else {
+            $startY = self::FOOTER_HEIGHT;
+        }
+
+        // Draw separator line
+        $rectStartX = self::PAGE_MARGIN - 10;
+        $rectEndX = 555;
+        $lineY = $startY;
+        
+        $this->currentPage->setLineWidth(1);
+        $this->currentPage->setLineColor(new Zend_Pdf_Color_RGB(0, 0, 0));
+        $this->currentPage->drawLine($rectStartX, $lineY, $rectEndX, $lineY);
+
+        // Draw warning rectangle without border
+        $this->currentPage->setFillColor(new Zend_Pdf_Color_GrayScale(0.75));
+        $this->currentPage->drawRectangle(
+            $rectStartX,
+            $lineY - 2,
+            $rectEndX,
+            $lineY - 22,
+            Zend_Pdf_Page::SHAPE_DRAW_FILL
+        );
+
+        // Add centered text
+        $font = Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD);
+        $this->currentPage->setFont($font, 12);
+        $text = 'PROFORMA INVOICE ONLY - DO NOT RELEASE STOCK';
+        $textWidth = $this->getTextWidth($text, $font, 12);
+        $textStartX = $rectStartX + (($rectEndX - $rectStartX) - $textWidth) / 2;
+        $textStartY = $lineY - 22 - (($lineY - 22 - ($lineY - 2)) / 2) - 7;
+        
+        $this->currentPage->setFillColor(new Zend_Pdf_Color_RGB(0, 0, 0));
+        $this->currentPage->drawText($text, $textStartX, $textStartY, 'UTF-8');
+
+        $startY -= 30;
+
+        // Draw totals with signature
+        $this->drawTotalsWithSignature($totalExclVat, $vatTotal, $totalInclVat, $startY - 20);
+
+        // Add customer terms
+        $this->addCustomerTerms($startY - 100);
+    }
+
+    /**
+     * Draw totals section with signature fields
+     */
+    protected function drawTotalsWithSignature($totalExclVat, $vatTotal, $totalInclVat, $currentY)
+    {
+        $labelRightEdge = 470;
+        $valueRightEdge = 530;
+        $dateLabelX = self::PAGE_MARGIN;
+        $dotsStartX = 120;
+
+        $this->currentPage->setFillColor(new Zend_Pdf_Color_RGB(0, 0, 0));
+
+        $drawSummaryLine = function($label, $value, $isBold = false) use (
+            &$currentY, $labelRightEdge, $valueRightEdge
+        ) {
+            $font = $isBold 
+                ? Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA_BOLD)
+                : Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA);
+
+            $this->currentPage->setFont($font, 10);
+
+            // Right-align label
+            $labelWidth = $this->getTextWidth($label, $font, 10);
+            $labelX = $labelRightEdge - $labelWidth;
+            $this->currentPage->drawText($label, $labelX, $currentY);
+
+            // Right-align value
+            $valueText = number_format((float)$value, 2);
+            $valueWidth = $this->getTextWidth($valueText, $font, 10);
+            $valueX = $valueRightEdge - $valueWidth;
+            $this->currentPage->drawText($valueText, $valueX, $currentY);
+
+            $currentY -= 12;
+        };
+
+        // Draw totals
+        $drawSummaryLine('Total Excl Vat:', $totalExclVat);
+        $dateY = $currentY + 12;
+
+        $drawSummaryLine('Vat:', $vatTotal);
+        $currentY -= 4;
+
+        // Draw lines around final total
+        $lineStartX = $labelRightEdge + 2;
+        $lineEndX = $valueRightEdge + 6;
+        $this->currentPage->setLineWidth(1);
+        $this->currentPage->drawLine($lineStartX, $currentY + 10, $lineEndX, $currentY + 10);
+
+        $drawSummaryLine('Total Incl Vat:', $totalInclVat, true);
+        $signatureY = $currentY + 12;
+
+        $this->currentPage->drawLine($lineStartX, $currentY + 8, $lineEndX, $currentY + 8);
+
+        // Draw signature fields
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 10);
+        
+        $drawFieldLine = function($label, $y) use ($dateLabelX, $dotsStartX) {
+            $this->currentPage->drawText($label, $dateLabelX, $y);
+            $this->currentPage->drawText('..........................................', $dotsStartX, $y);
+        };
+
+        $drawFieldLine('Date:', $dateY);
+        $drawFieldLine('Signature:', $signatureY);
+        $drawFieldLine('Name:', $signatureY - 18);
+    }
+
+    /**
+     * Add customer terms and conditions
+     */
+    protected function addCustomerTerms($startY)
+    {
+        $this->currentPage->setFont(Zend_Pdf_Font::fontWithName(Zend_Pdf_Font::FONT_HELVETICA), 9);
+
+        $textLines = [
+            "I hereby confirm that the order items and quantities are correct.",
+            "Prices are valid for 14 days from issue date OR while stocks last.",
+            "Please confirm Stock Availability before making payment.",
+            "PAYMENT OPTIONS:-",
+            "Pay in-store by Cash or Credit/Debit card, to avoid delays in payment processing.",
+            "All rejected/returned deliveries will incur a 15% handling charge."
+        ];
+
+        $redLineIndices = [1, 2, 4];
+
+        foreach ($textLines as $index => $line) {
+            // Set color based on line index
+            $color = in_array($index, $redLineIndices) 
+                ? new Zend_Pdf_Color_RGB(1, 0, 0) 
+                : new Zend_Pdf_Color_RGB(0, 0, 0);
+            
+            $this->currentPage->setFillColor($color);
+            $this->currentPage->drawText($line, self::PAGE_MARGIN, $startY);
+            $startY -= 11;
+        }
+
+        return $startY;
+    }
+
+    /**
+     * Main PDF generation method
+     */
+    public function generate(CartInterface $quote)
+    {
+        // Initialize PDF
+        $this->pdf = new Zend_Pdf();
+        $this->currentPage = new Zend_Pdf_Page(Zend_Pdf_Page::SIZE_A4);
+        $this->pdf->pages[] = $this->currentPage;
+
+        // Add background image first (so it appears behind everything else)
+        $this->addBackgroundImage();
+
+        // Add logo
+        $this->addLogo(self::PAGE_MARGIN, 780);
+
+        // Add company information
+        $startY = $this->addCompanyInfo(765);
+
+        // Add main title rectangle
+        $rectStartX = self::PAGE_MARGIN - 10;
+        $rectEndX = 555;
+        $this->drawTextRectangle($rectStartX, $rectEndX, $startY, $startY - 25, 'PRO FORMA INVOICE');
+
+        // Add customer information
+        $startY = $this->addCustomerInfo($quote, $startY - 50);
+
+        // Add product section
+        $startY -= 5;
+        $startY = $this->addProductTableHeaders($startY);
+        $startY = $this->addProductItems($quote, $startY);
+
+        // Check if we have enough space for footer, if not create new page
+        if ($startY <= self::FOOTER_HEIGHT + 50) {
+            $this->addFooter($quote, true); // Force new page for footer
+        } else {
+            $this->addFooter($quote, false); // Add footer to current page
+        }
+
+        return $this->pdf;
+    }
+
+    /**
+     * Save PDF to file
+     */
     public function savePdfToFile(Zend_Pdf $pdf, $filename)
     {
         $directoryPath = $this->directoryList->getPath(DirectoryList::VAR_DIR) . '/quotes/';

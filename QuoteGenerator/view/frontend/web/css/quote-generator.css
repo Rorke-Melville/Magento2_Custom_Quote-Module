@@ -1,0 +1,119 @@
+#quote-warning-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+#quote-warning-modal .modal-content {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+    position: relative;
+}
+
+#quote-warning-modal .modal-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+#quote-warning-modal .icon-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 16px;
+}
+
+#quote-warning-modal .icon-container svg {
+    width: 46px;
+    height: 46px;
+    fill: #0099a8;
+}
+
+#quote-warning-modal .header-content h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1a1a1a;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+#quote-warning-modal .header-content p {
+    margin: 4px 0 0 0;
+    font-size: 14px;
+    color: #666;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+#quote-warning-modal .modal-message {
+    background: #f0fafa;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    border-left: 4px solid #0099a8;
+}
+
+#quote-warning-modal .modal-message p {
+    margin: 0;
+    font-size: 16px;
+    color: #374151;
+    line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+#quote-warning-modal .modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+#quote-warning-modal #quote-modal-cancel {
+    background: #f3f4f6;
+    color: #374151;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+#quote-warning-modal #quote-modal-cancel:hover {
+    background: #e5e7eb;
+}
+
+#quote-warning-modal #quote-modal-ok {
+    background: linear-gradient(135deg, #00828f 0%, #00b0c2 100%);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    box-shadow: 0 4px 12px rgba(0, 153, 168, 0.3);
+}
+
+#quote-warning-modal #quote-modal-ok:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 153, 168, 0.4);
+}

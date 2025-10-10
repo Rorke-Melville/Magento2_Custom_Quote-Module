@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<!--
+  Add “My Quotes” to the account pop‑up (and header mini‑links).
+  This hooks into the 'customer' block (account/customer.phtml)
+  and adds our link into the 'accountLinks' group.
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <!-- reference the block that renders the pop‑up -->
+        <referenceBlock name="customer">
+            <block class="Magento\Framework\View\Element\Html\Link\Current"
+                   name="customer-account-popup-quote-link"
+                   after="customer-account-link">
+                <arguments>
+                    <!-- your route to quote history -->
+                    <argument name="path" xsi:type="string">quote/quote/history</argument>
+                    <!-- what the link says -->
+                    <argument name="label" xsi:type="string" translate="true">My Quotes</argument>
+                    <!-- must be 'accountLinks' for the customer.phtml to render it -->
+                    <argument name="group" xsi:type="string">accountLinks</argument>
+                </arguments>
+            </block>
+        </referenceBlock>
+    </body>
+</page>

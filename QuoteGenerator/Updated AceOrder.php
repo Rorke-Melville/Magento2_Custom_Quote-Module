@@ -217,13 +217,9 @@ class AceOrder implements ObserverInterface
             'DeliveryPostalCode' => $shippingdetails['postcode'] ?? "",
             'DeliveryProvinceState' => $shippingdetails['region'] ?? "",
             'OrderLines' => $jProd,
-            'OrderPayments' => $pcode
+            'OrderPayments' => $pcode,
+            'QuoteId' => $userGenerated == 1 ? $quoteId : 0
         ];
-
-        // Add quote_id only if User_Generated is 1
-        if ($userGenerated == 1) {
-            $json['QuoteId'] = $quoteId;
-        }
         
         // Write file
         $dirPath = '/var/www/html/orders/';
@@ -239,3 +235,4 @@ class AceOrder implements ObserverInterface
         return $this;
     }
 }
+

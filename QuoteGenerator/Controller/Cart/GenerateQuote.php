@@ -148,6 +148,10 @@ class GenerateQuote extends Action
 
             // Set User_Generated flag
             $quote->setData('User_Generated', 1);
+            
+            // Deactivate the quote by setting is_active to 0
+            $quote->setIsActive(0);
+            
             $quote->save();
 
             // Determine delivery method description
@@ -288,40 +292,53 @@ class GenerateQuote extends Action
             }
 
             $jsonData = [
-                'quote_id' => '92-' . $quoteId,
-                'reserved_order_number' => $reservedOrderNumber,
-                'QuoteDate' => $quote->getCreatedAt() ?? '',
+                'StoreCode' => "90",
+                'OriginatingSysOrderId' => '94-' . $quoteId,
+                //'reserved_order_number' => $reservedOrderNumber,
+                'OrderDate' => $quote->getCreatedAt() ?? '',
+                'ChannelId' => 1,
                 'DeliveryTypeId' => $delType,
-                'DeliveryMethod' => $shippingMethod ?? '',
-                'DeliveryMethodDescription' => $deliveryMethodDesc,
                 'DeliveryCost' => $shippingAmount,
                 'FulFillingStoreCode' => $fulfillStore,
-                'QuoteTotal' => 0,
+                'ItmExclVat' => "N",
+                'Discount' => "",
+                //'DeliveryMethod' => $shippingMethod ?? '',
+                //'DeliveryMethodDescription' => $deliveryMethodDesc,
+                'OrderTotal' => 0,
                 'QtyTotal' => 0,
+                'CustomerDeliveryInstruct' => "",
                 'CustomerName' => $quote->getCustomerFirstname() . ' ' . $quote->getCustomerLastname(),
-                'CustomerTelNo' => $shippingAddress->getTelephone() ?? '',
-                'DeliveryAddress' => implode(', ', (array)$shippingAddress->getStreet()) ?? '',
+                'CustomerTelNo1' => $shippingAddress->getTelephone() ?? '',
+                'CustomerTelNo2' => "",
+                'CustomerEmailAddress' => $quote->getCustomerEmail() ?? '',
+                'VatReg' => "",
+                'DeliveryAddress1' => implode(', ', (array)$shippingAddress->getStreet()) ?? '',
+                'DeliveryAddress2' => "",
+                'DeliveryAddress3' => "",
                 'DeliveryCity' => $shippingAddress->getCity() ?? '',
+                'DeliveryPostalCode' => $shippingAddress->getPostCOde() ?? '',
                 'DeliveryProvinceState' => $region,
-                'Country' => $shippingAddress->getCountryId() ?? '',
-                'products' => [],
+                'OrderLines' => [],
             ];
 
             $totalSub = 0;
+            $LineID = 1;
             foreach ($quote->getAllVisibleItems() as $item) {
                 $subtotal = $item->getPrice() * $item->getQty();
-                $jsonData['products'][] = [
-                    'name' => $item->getName(),
-                    'sku' => $item->getSku(),
-                    'price' => $item->getPrice(),
-                    'quantity' => $item->getQty(),
-                    'subtotal' => $subtotal,
+                $jsonData['OrderLines'][] = [
+                    //'name' => $item->getName(),
+                    'LineID' => $LineID,
+                    'ItemCode' => $item->getSku(),
+                    'OrderQty' => $item->getQty(),
+                    'UnitIncl' => $item->getPrice(),
+                    //'subtotal' => $subtotal,
                 ];
                 $jsonData['QtyTotal'] += $item->getQty();
                 $totalSub += $subtotal;
+                $LineID ++;
             }
 
-            $jsonData['QuoteTotal'] = $totalSub + $shippingAmount;
+            $jsonData['OrderTotal'] = $totalSub + $shippingAmount;
 
             $jsonContent = $this->jsonSerializer->serialize($jsonData);
             $quoteDirectory = '/var/www/html/quotes';
