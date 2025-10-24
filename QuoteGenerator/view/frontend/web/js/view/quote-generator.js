@@ -419,6 +419,15 @@ define([
                 link.click();
                 document.body.removeChild(link);
                 
+                // Refresh Magento customer-data "cart" section so minicart counter updates
+                try {
+                    // invalidate then force reload from server
+                    customerData.invalidate(['cart']);
+                    customerData.reload(['cart'], true);
+                } catch (e) {
+                    console.warn('Failed to reload customer-data cart section:', e);
+                }
+                
                 setTimeout(function() {
                     window.URL.revokeObjectURL(link.href);
                     window.location.href = 'https://dev.gelmar.co.za'; 
